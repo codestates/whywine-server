@@ -67,18 +67,6 @@ export = {
       } else if (!wine) {
         throw new Error("wine");
       } else {
-        // 와인 rating_avg 갱신
-        const comments = await commentRepo.find({
-          where: { wine: wineId },
-        });
-        let newRatingAvg = (wine.rating_avg + rating) / (comments.length + 1);
-        await connection
-          .createQueryBuilder()
-          .update(Wine)
-          .set({ rating_avg: newRatingAvg })
-          .where("id = :wineId", { wineId })
-          .execute();
-
         // 새로운 코멘트 저장
         let comment = new Comment();
         comment.text = text;
@@ -88,7 +76,21 @@ export = {
         comment.bad_count = 0;
         comment.rating = rating;
         const newComment = await commentRepo.save(comment);
+        // 와인 rating_avg 갱신
+        const comments = await commentRepo.find({
+          where: { wine: wineId },
+        });
 
+        let newRatingAvg =
+          comments.reduce((acc, cur) => {
+            return acc + cur.rating;
+          }, 0) / comments.length;
+        await connection
+          .createQueryBuilder()
+          .update(Wine)
+          .set({ rating_avg: newRatingAvg })
+          .where("id = :wineId", { wineId })
+          .execute();
         res.status(200).send({
           data: {
             newComment,
@@ -238,10 +240,10 @@ export = {
       }
 
       const connection = await getConnection();
+      const wineRepo = await connection.getRepository(Wine);
       const comment = await connection
         .getRepository(Comment)
-        .findOne({ where: { id: commentId }, relations: ["user"] });
-
+        .findOne({ where: { id: commentId }, relations: ["user", "wine"] });
       if (comment) {
         if (comment.user.id === userId) {
           await connection
@@ -258,6 +260,29 @@ export = {
             .where("id = :commentId", { commentId })
             .execute();
 
+          const wine = await wineRepo.findOne({
+            where: { id: comment.wine.id },
+          });
+
+          if (wine) {
+            const comments = await connection
+              .getRepository(Comment)
+              .find({ where: { wine: wine.id } });
+
+            let rating_avg = 0;
+            if (comments.length !== 0) {
+              rating_avg =
+                comments.reduce((acc, cur) => {
+                  return acc + cur.rating;
+                }, 0) / comments.length;
+            }
+            await connection
+              .createQueryBuilder()
+              .update(Wine)
+              .set({ rating_avg })
+              .where({ id: wine.id })
+              .execute();
+          }
           res.status(200).send({ message: "comment successfully deleted." });
         } else {
           throw new Error("user");
