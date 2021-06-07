@@ -8,13 +8,13 @@ AWS.config.update({
   // aws 설정
   accessKeyId: process.env.S3_ACCESS_KEY_ID,
   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-  region: "us-east-2",
+  region: "ap-northeast-2",
 });
 
 const upload = multer({
   storage: multerS3({
     s3: new AWS.S3(),
-    bucket: "whywine-image",
+    bucket: "whywineimg",
     key(req, file, cb): void {
       cb(null, `${path.basename(file.originalname)}`);
     },

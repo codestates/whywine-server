@@ -23,7 +23,7 @@ const s3 = new AWS.S3();
 const upload = multer({
   storage: multerS3({
     s3: s3,
-    bucket: "whywine-image",
+    bucket: "whywineimg",
     acl: "public-read",
     contentType: multerS3.AUTO_CONTENT_TYPE,
     metadata: function (req: any, file: any, cb: any) {
