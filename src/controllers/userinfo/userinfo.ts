@@ -14,7 +14,7 @@ const userinfo = async (req: Request, res: Response, next: NextFunction) => {
     const userRepository = getRepository(User);
     const wineRepository = getRepository(Wine);
     const user = await userRepository.findOne({
-      where: { id: 7 }, //req.session!.passport!.user
+      where: { id: req.session!.passport!.user }, //req.session!.passport!.user
       relations: ["tags", "good", "bad", "wines"],
     });
 
