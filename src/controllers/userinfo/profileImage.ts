@@ -10,7 +10,7 @@ AWS.config.update({
   // aws 설정
   accessKeyId: process.env.S3_ACCESS_KEY_ID,
   secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-  region: "us-east-2",
+  region: "ap-northeast-2",
 });
 const s3 = new AWS.S3();
 
@@ -55,7 +55,7 @@ const profileImage = {
       if (user.image) {
         await s3.deleteObject(
           {
-            Bucket: "whywine-image",
+            Bucket: "whywineimg",
             Key: "user/" + user.image,
           },
           (err: any, data: any) => {
