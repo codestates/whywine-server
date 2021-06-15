@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 
 import dotenv from "dotenv";
-import { getConnection } from "typeorm";
+import { getRepository } from "typeorm";
 import { User } from "../../entity/user";
-import user from "../user";
 const AWS = require("aws-sdk");
 dotenv.config();
 AWS.config.update({
@@ -44,10 +43,9 @@ const profileImage = {
         throw new Error("upload");
       }
 
-      const connection = await getConnection();
-      const userRepo = await connection.getRepository(User);
+      const userRepo = await getRepository(User);
+      let user = await userRepo.findOne(userId);
 
-      let user = await userRepo.findOne({ where: { id: userId } }); // 2 => userId
       if (user) {
       } else {
         throw new Error("user");
@@ -65,16 +63,10 @@ const profileImage = {
           }
         );
       }
-      await connection
-        .createQueryBuilder()
-        .update(User)
-        .set({ image: fileObj.key.split("/")[1] })
-        .where("id = :userId", { userId })
-        .execute();
-      const updatedUser = await userRepo.findOne({
-        select: ["id", "email", "likes", "image", "nickname"],
-        where: { id: userId },
-      });
+
+      user.image = fileObj.key.split("/")[1];
+      let updatedUser = await userRepo.save(user);
+
       res.status(200).send({ message: "ok", data: { user: updatedUser } });
     } catch (e) {
       if (e.message === "userId") {
