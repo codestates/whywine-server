@@ -12,7 +12,6 @@ import { Tag } from "./tag";
 @Entity()
 export class Wine {
   @PrimaryGeneratedColumn()
-  @OneToMany(() => Comment, (comment) => comment.wine)
   id: number;
 
   @Column()
@@ -36,6 +35,8 @@ export class Wine {
   @Column({ type: "float" })
   rating_avg: number;
 
+  @OneToMany(() => Comment, (comment) => comment.wine)
+  comments: Comment[];
   // 와인에 붙는 태그
   @ManyToMany(() => Tag, (tag) => tag.id)
   @JoinTable({ name: "wine_tag" })
