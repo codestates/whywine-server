@@ -1,5 +1,4 @@
 import { getConnection } from "typeorm";
-import ormconfig from "../../ormconfig";
 import { Wine } from "../entity/wine";
 import wineData from "../../wineData/wineData.json";
 import { Tag } from "../entity/tag";
@@ -22,11 +21,10 @@ export = {
         if (!(await tagRepo.findOne({ name: `${sort}_${tag}` }))) {
           let newTag = new Tag();
           newTag.name = `${sort}_${tag}`;
-          await connection.manager.save(newTag);
+          await tagRepo.save(newTag);
         }
       }
     }
-    const allTags = await tagRepo.find();
     for (let sortname of winesSort) {
       for (let wine of wines[sortname]) {
         if (!(await wineRepo.findOne({ name: wine.name, price: wine.price }))) {
@@ -60,7 +58,7 @@ export = {
           } else {
             newWine.tags = [body, tannins, sweetness, acidity];
           }
-          await connection.manager.save(newWine);
+          await wineRepo.save(newWine);
         }
       }
     }
