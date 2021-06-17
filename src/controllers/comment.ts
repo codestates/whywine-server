@@ -1,11 +1,9 @@
 import { Request, Response } from "express";
-import { getConnection } from "typeorm";
+import { getConnection, getRepository } from "typeorm";
 import { Comment } from "../entity/comment";
-import { Tag } from "../entity/tag";
 import { Wine } from "../entity/wine";
 import { User } from "../entity/user";
 import { Recomment } from "../entity/recomment";
-import { report } from "../routers/image";
 
 require("dotenv").config();
 
@@ -34,10 +32,9 @@ interface UserInterface {
 export = {
   post: async (req: Request, res: Response) => {
     try {
-      const connection = getConnection();
-      const userRepo = await connection.getRepository(User);
-      const wineRepo = await connection.getRepository(Wine);
-      const commentRepo = await connection.getRepository(Comment);
+      const userRepo = await getRepository(User);
+      const wineRepo = await getRepository(Wine);
+      const commentRepo = await getRepository(Comment);
       const { wineId, text, rating } = req.body;
 
       let userId: number;
@@ -85,12 +82,10 @@ export = {
           comments.reduce((acc, cur) => {
             return acc + cur.rating;
           }, 0) / comments.length;
-        await connection
-          .createQueryBuilder()
-          .update(Wine)
-          .set({ rating_avg: newRatingAvg })
-          .where("id = :wineId", { wineId })
-          .execute();
+
+        await wineRepo.update(wineId, {
+          rating_avg: newRatingAvg,
+        });
         res.status(200).send({
           data: {
             newComment,
@@ -119,18 +114,14 @@ export = {
   },
   get: async (req: Request, res: Response) => {
     try {
-      const connection = getConnection();
-      const userRepo = await connection.getRepository(User);
-      const wineRepo = await connection.getRepository(Wine);
-      const commentRepo = await connection.getRepository(Comment);
-      const recommentRepo = await connection.getRepository(Recomment);
+      const userRepo = await getRepository(User);
+      const wineRepo = await getRepository(Wine);
+      const commentRepo = await getRepository(Comment);
+      const recommentRepo = await getRepository(Recomment);
 
       const wineId: number = Number(req.query.wineid);
       let userId: number;
       let user: User;
-
-      let usersgood: number[] = [];
-      let usersbad: number[] = [];
 
       if (req.session.passport) {
         userId = req.session!.passport!.user;
@@ -138,11 +129,16 @@ export = {
         userId = -1; // 비회원
       }
 
+      let usersgood: number[] = [];
+      let usersbad: number[] = [];
+
       if (userId !== -1) {
+        // 회원인 경우, 회원이 좋아요/싫어요 누른 리뷰의 아이디를 배열에 추가
         let result = await userRepo.findOne({
           where: { id: userId }, // 3=>userId
           relations: ["good", "bad"],
         });
+
         if (result) {
           user = result;
           if (userId !== -1) {
@@ -153,7 +149,7 @@ export = {
           throw new Error("user");
         }
       }
-      const wine = await wineRepo.findOne({ id: wineId });
+      const wine = await wineRepo.findOne(wineId);
       if (wine) {
         let comments: Comment[] = await commentRepo.find({
           where: { wine: wineId },
@@ -185,6 +181,8 @@ export = {
           });
           if (!result) {
             recomments = result;
+          } else {
+            recomments = [];
           }
 
           let res: CommentInterface = {
@@ -211,13 +209,13 @@ export = {
           message: "ok.",
         });
       } else {
-        throw new Error();
+        throw new Error("no wine");
       }
     } catch (err) {
       console.log(err);
       if (err.message === "user") {
         res.status(401).send({ message: "user not found." });
-      } else {
+      } else if (err.message === "no wine") {
         res.status(404).send({ message: "wineId not found." });
       }
     }
@@ -239,35 +237,32 @@ export = {
         throw new Error("commentId");
       }
 
-      const connection = await getConnection();
-      const wineRepo = await connection.getRepository(Wine);
-      const comment = await connection
-        .getRepository(Comment)
-        .findOne({ where: { id: commentId }, relations: ["user", "wine"] });
+      const wineRepo = await getRepository(Wine);
+      const commentRepo = await getRepository(Comment);
+      const recommentRepo = await getRepository(Recomment);
+      const comment = await commentRepo.findOne({
+        where: { id: commentId },
+        relations: ["user", "wine"],
+      });
       if (comment) {
         if (comment.user.id === userId) {
-          await connection
+          await recommentRepo
             .createQueryBuilder()
             .delete()
             .from(Recomment)
             .where("comment = :commentId", { commentId })
             .execute();
 
-          await connection
-            .createQueryBuilder()
-            .delete()
-            .from(Comment)
-            .where("id = :commentId", { commentId })
-            .execute();
+          await commentRepo.delete(commentId);
 
           const wine = await wineRepo.findOne({
             where: { id: comment.wine.id },
           });
 
           if (wine) {
-            const comments = await connection
-              .getRepository(Comment)
-              .find({ where: { wine: wine.id } });
+            const comments = await commentRepo.find({
+              where: { wine: wine.id },
+            });
 
             let rating_avg = 0;
             if (comments.length !== 0) {
@@ -276,12 +271,8 @@ export = {
                   return acc + cur.rating;
                 }, 0) / comments.length;
             }
-            await connection
-              .createQueryBuilder()
-              .update(Wine)
-              .set({ rating_avg })
-              .where({ id: wine.id })
-              .execute();
+
+            await wineRepo.update(wine.id, { rating_avg });
           }
           res.status(200).send({ message: "comment successfully deleted." });
         } else {
@@ -312,7 +303,6 @@ export = {
       } else {
         throw new Error("userId");
       }
-
       if (!commentId) {
         throw new Error("commentId");
       }
@@ -321,29 +311,28 @@ export = {
         throw new Error("text&&rating");
       }
 
-      const connection = await getConnection();
-      const commentRepo = await connection.getRepository(Comment);
+      const commentRepo = await getRepository(Comment);
+      const wineRepo = await getRepository(Wine);
       const comment = await commentRepo.findOne({
         where: { id: commentId },
-        relations: ["user"],
+        relations: ["user", "wine"],
       });
       if (comment) {
         if (comment.user.id === userId) {
           if (text) {
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ text: text })
-              .where("id = :commentId", { commentId })
-              .execute();
+            await commentRepo.update(commentId, { text });
           }
           if (rating) {
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ rating: rating })
-              .where("id = :commentId", { commentId })
-              .execute();
+            await commentRepo.update(commentId, { rating });
+
+            const comments = await commentRepo.find({
+              where: { wine: comment.wine },
+            });
+            let newRatingAvg =
+              comments.reduce((acc, cur) => {
+                return acc + cur.rating;
+              }, 0) / comments.length;
+            await wineRepo.update(comment.wine, { rating_avg: newRatingAvg });
           }
 
           res.status(200).send({ message: "comment successfully changed." });
@@ -369,28 +358,24 @@ export = {
   },
   good: async (req: Request, res: Response) => {
     try {
-      let commentId;
-      let userId;
+      let commentId: number;
+      let userId: number;
       if (req.body.commentId) {
         commentId = req.body.commentId;
       } else {
         throw new Error("commentId");
       }
-      if (req.session!.passport!.user) {
+      if (req.session!.passport) {
         userId = req.session!.passport!.user;
       } else {
         throw new Error("user");
       }
-
-      const connection = getConnection();
-      const userRepo = await connection.getRepository(User);
-      const commentRepo = await connection.getRepository(Comment);
-
-      const user = await userRepo.findOne({
-        where: { id: userId },
+      const userRepo = await getRepository(User);
+      const commentRepo = await getRepository(Comment);
+      const user = await userRepo.findOne(userId, {
+        relations: ["good", "bad"],
       }); // 4==>userId
-      const comment = await commentRepo.findOne({ id: commentId });
-
+      const comment = await commentRepo.findOne(commentId);
       if (user) {
         if (comment) {
           let result = await userRepo
@@ -400,39 +385,27 @@ export = {
             .getOne();
 
           if (!result) {
-            // 좋아요 추가
-            await connection
-              .createQueryBuilder()
-              .relation(User, "good")
-              .of(user)
-              .add(comment);
+            // 좋아요 누르기
+            user.good = [...user.good, comment];
+            await userRepo.save(user);
 
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ good_count: comment.good_count + 1 })
-              .where("id = :commentId", { commentId })
-              .execute();
+            comment.good_count++;
+            await commentRepo.save(comment);
+
             res.status(200).send({
-              data: { goodCount: comment.good_count + 1 },
+              data: { goodCount: comment.good_count },
               message: "good button clicked.",
             });
           } else {
             // 좋아요 취소
-            await connection
-              .createQueryBuilder()
-              .relation(User, "good")
-              .of(user)
-              .remove(comment);
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ good_count: comment.good_count - 1 })
-              .where("id = :commentId", { commentId })
-              .execute();
+            user.good = user.good.filter((c) => c.id !== comment.id);
+            await userRepo.save(user);
+
+            comment.good_count--;
+            await commentRepo.save(comment);
 
             res.status(200).send({
-              data: { goodCount: comment.good_count - 1 },
+              data: { goodCount: comment.good_count },
               message: "good button cancelled.",
             });
           }
@@ -456,28 +429,25 @@ export = {
   },
   bad: async (req: Request, res: Response) => {
     try {
-      let commentId;
-      let userId;
+      let commentId: number;
+      let userId: number;
       if (req.body.commentId) {
         commentId = req.body.commentId;
       } else {
         throw new Error("commentId");
       }
-      if (req.session!.passport!.user) {
-        userId = req.session!.passport!.user;
-      } else {
-        throw new Error("user");
-      }
-
-      const connection = getConnection();
-      const userRepo = await connection.getRepository(User);
-      const commentRepo = await connection.getRepository(Comment);
-
-      const user = await userRepo.findOne({
-        where: { id: userId },
+      // if (req.session!.passport) {
+      //   userId = req.session!.passport!.user;
+      // } else {
+      //   throw new Error("user");
+      // }
+      userId = 6;
+      const userRepo = await getRepository(User);
+      const commentRepo = await getRepository(Comment);
+      const user = await userRepo.findOne(userId, {
+        relations: ["good", "bad"],
       }); // 4==>userId
-      const comment = await commentRepo.findOne({ id: commentId });
-
+      const comment = await commentRepo.findOne(commentId);
       if (user) {
         if (comment) {
           let result = await userRepo
@@ -485,41 +455,29 @@ export = {
             .innerJoinAndSelect("user.bad", "bad")
             .where("bad.id = :commentId", { commentId })
             .getOne();
-
+          console.log(result);
           if (!result) {
-            // 좋아요 추가
-            await connection
-              .createQueryBuilder()
-              .relation(User, "bad")
-              .of(user)
-              .add(comment);
+            // 좋아요 누르기
+            user.bad = [...user.bad, comment];
+            await userRepo.save(user);
 
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ bad_count: comment.bad_count + 1 })
-              .where("id = :commentId", { commentId })
-              .execute();
+            comment.bad_count++;
+            await commentRepo.save(comment);
+
             res.status(200).send({
-              data: { badCount: comment.bad_count + 1 },
+              data: { badCount: comment.bad_count },
               message: "bad button clicked.",
             });
           } else {
             // 좋아요 취소
-            await connection
-              .createQueryBuilder()
-              .relation(User, "bad")
-              .of(user)
-              .remove(comment);
-            await connection
-              .createQueryBuilder()
-              .update(Comment)
-              .set({ bad_count: comment.bad_count - 1 })
-              .where("id = :commentId", { commentId })
-              .execute();
+            user.bad = user.bad.filter((c) => c.id !== comment.id);
+            await userRepo.save(user);
+
+            comment.bad_count--;
+            await commentRepo.save(comment);
 
             res.status(200).send({
-              data: { badCount: comment.bad_count - 1 },
+              data: { badCount: comment.bad_count },
               message: "bad button cancelled.",
             });
           }
@@ -543,9 +501,9 @@ export = {
   },
   re_post: async (req: Request, res: Response) => {
     try {
-      const connection = getConnection();
-      const userRepo = await connection.getRepository(User);
-      const commentRepo = await connection.getRepository(Comment);
+      const userRepo = await getRepository(User);
+      const commentRepo = await getRepository(Comment);
+      const recommentRepo = await getRepository(Recomment);
       const { commentId, text } = req.body;
 
       let userId: number;
@@ -555,7 +513,6 @@ export = {
       } else {
         throw new Error("userId");
       }
-
       if (!commentId) {
         throw new Error("commentId");
       }
@@ -564,8 +521,8 @@ export = {
         throw new Error("text");
       }
 
-      const user = await userRepo.findOne({ id: userId }); // userId=>1
-      const comment = await commentRepo.findOne({ id: commentId });
+      const user = await userRepo.findOne(userId); // userId=>1
+      const comment = await commentRepo.findOne(commentId);
       if (!user) {
         throw new Error("user");
       } else if (!comment) {
@@ -575,7 +532,7 @@ export = {
         recomment.text = text;
         recomment.comment = comment;
         recomment.user = user;
-        const newRecomment = await connection.manager.save(recomment);
+        const newRecomment = await recommentRepo.save(recomment);
         newRecomment.user.password = "";
         res.status(200).send({
           data: {
@@ -619,27 +576,20 @@ export = {
       } else {
         throw new Error("commentId");
       }
-
       if (req.session!.passport!.user) {
         userId = req.session!.passport!.user;
       } else {
         throw new Error("userId");
       }
-
-      const connection = getConnection();
-      const recomment = await connection
-        .getRepository(Recomment)
-        .findOne({ where: { id: commentId }, relations: ["user"] });
-
+      const recommentRepo = getRepository(Recomment);
+      const recomment = await recommentRepo.findOne({
+        where: { id: commentId },
+        relations: ["user"],
+      });
+      console.log(recomment);
       if (recomment) {
         if (recomment.user.id === userId) {
-          // 1=> userId
-          await connection
-            .createQueryBuilder()
-            .delete()
-            .from(Recomment)
-            .where("id = :commentId", { commentId })
-            .execute();
+          await recommentRepo.remove(recomment);
 
           res.status(200).send({ message: "comment successfully deleted." });
         } else {
@@ -670,7 +620,6 @@ export = {
       } else {
         throw new Error("userId");
       }
-
       if (!commentId) {
         throw new Error("commentId");
       }
@@ -679,22 +628,14 @@ export = {
         throw new Error("text");
       }
 
-      const connection = await getConnection();
-      const recommentRepo = await connection.getRepository(Recomment);
+      const recommentRepo = await getRepository(Recomment);
       const comment = await recommentRepo.findOne({
         where: { id: commentId },
         relations: ["user"],
       });
       if (comment) {
         if (comment.user.id === userId) {
-          //1=>userId
-          await connection
-            .createQueryBuilder()
-            .update(Recomment)
-            .set({ text: text })
-            .where("id = :commentId", { commentId })
-            .execute();
-
+          await recommentRepo.update(commentId, { text });
           res.status(200).send({ message: "comment successfully changed." });
         } else {
           throw new Error("unauthorized");

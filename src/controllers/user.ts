@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getConnection } from "typeorm";
+import { getRepository } from "typeorm";
 import { Tag } from "../entity/tag";
 import { User } from "../entity/user";
 import { Wine } from "../entity/wine";
@@ -8,11 +8,8 @@ require("dotenv").config();
 export = {
   update: async (req: Request, res: Response) => {
     try {
-      const connection = await getConnection();
       let tags: string[] = [];
-
       let userId: number;
-
       if (req.session!.passport!) {
         userId = req.session!.passport!.user;
       } else {
@@ -25,8 +22,8 @@ export = {
         throw new Error("tags");
       }
 
-      let userRepo = connection.getRepository(User); // user table
-      let tagRepo = connection.getRepository(Tag); // tag table
+      let userRepo = getRepository(User); // user table
+      let tagRepo = getRepository(Tag); // tag table
       const user = await userRepo.findOne({
         where: { id: userId },
         relations: ["tags"],
@@ -40,19 +37,11 @@ export = {
             tagsArr.push(one);
           }
         }
-
-        for (let tag of user.tags) {
-          await connection
-            .createQueryBuilder()
-            .relation(User, "tags")
-            .of(user)
-            .remove(tag);
-        }
-        await connection
-          .createQueryBuilder()
-          .relation(User, "tags")
-          .of(user)
-          .add(tagsArr);
+        user.tags = tagsArr;
+        userRepo
+          .save(user, { transaction: false })
+          .then((val) => console.log(val))
+          .catch((err) => console.error(err));
 
         res.status(200).send({ message: "ok." });
       } else {
@@ -78,36 +67,29 @@ export = {
       } else {
         throw new Error("userId");
       }
+
       if (req.body.wineId) {
         wineId = req.body.wineId;
       } else {
         throw new Error("wineId");
       }
 
-      const connection = await getConnection(); // 데이터베이스와 연결
-      const wineRepo = await connection.getRepository(Wine);
-      const userRepo = await connection.getRepository(User);
+      const wineRepo = await getRepository(Wine);
+      const userRepo = await getRepository(User);
 
-      const wine: Wine | undefined = await wineRepo.findOne({ id: wineId });
-      const user: User | undefined = await userRepo.findOne({
+      const wine = await wineRepo.findOne(wineId);
+      const user = await userRepo.findOne({
         where: { id: userId },
         relations: ["wines"],
-      }); // 2=>userId
+      });
       if (wine && user) {
         if (user.wines.findIndex((wine) => wine.id === wineId) !== -1) {
           throw new Error("already liked");
         }
-        await wineRepo
-          .createQueryBuilder()
-          .update(Wine)
-          .set({ likeCount: () => "likeCount+1" })
-          .where("id = :wineId", { wineId })
-          .execute();
-        await connection
-          .createQueryBuilder()
-          .relation(User, "wines")
-          .of(user)
-          .add(wine);
+        wine.likeCount++;
+        await wineRepo.save(wine);
+        user.wines = [...user.wines, wine];
+        await userRepo.save(user);
         res.status(200).send({ message: "ok" });
       } else if (!user) {
         throw new Error("user");
@@ -138,38 +120,32 @@ export = {
       } else {
         throw new Error("userId");
       }
+
       if (req.body.wineId) {
         wineId = req.body.wineId;
       } else {
         throw new Error("wineId");
       }
 
-      const connection = await getConnection(); // 데이터베이스와 연결
-      const wineRepo = await connection.getRepository(Wine);
-      const userRepo = await connection.getRepository(User);
+      const wineRepo = await getRepository(Wine);
+      const userRepo = await getRepository(User);
 
-      const wine: Wine | undefined = await wineRepo.findOne({ id: wineId });
-      const user: User | undefined = await userRepo.findOne({
+      const wine = await wineRepo.findOne({ id: wineId });
+      const user = await userRepo.findOne({
         where: { id: userId },
         relations: ["wines"],
-      }); // 2=>userId
+      });
       if (wine && user) {
         let wineids = user.wines.findIndex((wine) => wine.id === wineId);
         if (wineids === -1) {
           throw new Error("not in wines");
         }
-        await connection
-          .createQueryBuilder()
-          .relation(User, "wines")
-          .of(user)
-          .remove(wineId);
 
-        await connection
-          .createQueryBuilder()
-          .update(Wine)
-          .set({ likeCount: () => "likeCount-1" })
-          .where("id = :wineId", { wineId })
-          .execute();
+        user.wines = user.wines.filter((w) => w.id !== wineId);
+        await userRepo.save(user);
+        wine.likeCount--;
+        await wineRepo.save(wine);
+
         res.status(200).send({ message: "ok" });
       } else if (!user) {
         throw new Error("user");

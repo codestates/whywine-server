@@ -1,20 +1,23 @@
 import { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
-import { createQueryBuilder, getConnection, getRepository } from "typeorm";
-import { Tag } from "../../entity/tag";
+import { getRepository } from "typeorm";
 import { User } from "../../entity/user";
-import { Comment } from "../../entity/comment";
 import { Wine } from "../../entity/wine";
-import { resolve } from "path";
 
 dotenv.config();
 
 const userinfo = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    let userId: number;
+    if (req.session!.passport!.user) {
+      userId = req.session!.passport!.user;
+    } else {
+      throw new Error("userId");
+    }
     const userRepository = getRepository(User);
     const wineRepository = getRepository(Wine);
     const user = await userRepository.findOne({
-      where: { id: req.session!.passport!.user }, //req.session!.passport!.user
+      where: { id: userId },
       relations: ["tags", "good", "bad", "wines"],
     });
 
@@ -26,11 +29,10 @@ const userinfo = async (req: Request, res: Response, next: NextFunction) => {
           where: { id: wine.id },
           relations: ["tags"],
         });
-        if (result) {
+        if (result !== undefined) {
           wineResult.push(result);
         }
       }
-      console.log(wineResult);
       return res.status(200).send({
         data: {
           userInfo: {
@@ -49,8 +51,12 @@ const userinfo = async (req: Request, res: Response, next: NextFunction) => {
       });
     }
   } catch (error) {
-    console.error(error.message);
-    res.status(401).send({ data: null, message: "not authorized" });
+    if (error.message === "userId") {
+      res.status(401).send("You are not unauthorized");
+    } else {
+      console.error(error);
+      res.status(500).send("something is wrong");
+    }
   }
 };
 

@@ -13,7 +13,6 @@ import { Recomment } from "./recomment";
 @Entity()
 export class Comment {
   @PrimaryGeneratedColumn()
-  @OneToMany(() => Recomment, (recomment) => recomment.comment)
   id: number;
 
   @Column()
@@ -39,4 +38,7 @@ export class Comment {
 
   @CreateDateColumn({ type: "timestamp", name: "created_at" })
   createdAt?: Date;
+
+  @OneToMany(() => Recomment, (recomment) => recomment.comment)
+  recomments: Recomment[];
 }

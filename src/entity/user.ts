@@ -14,8 +14,6 @@ import { Wine } from "./wine";
 @Entity()
 export class User {
   @PrimaryGeneratedColumn()
-  @OneToMany(() => Comment, (comment) => comment.user)
-  @OneToMany(() => Recomment, (recomment) => recomment.user)
   id: number;
 
   @Column()
@@ -32,6 +30,12 @@ export class User {
 
   @Column({ nullable: true })
   image: string;
+
+  @OneToMany(() => Comment, (comment) => comment.user)
+  comments: Comment[];
+
+  @OneToMany(() => Recomment, (recomment) => recomment.user)
+  recomments: Recomment[];
 
   // 사용자의 선호 태그 join table
   @ManyToMany(() => Tag)
