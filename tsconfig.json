@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "lib": ["es5", "es6"],
+    "target": "es5",
+    "strict": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    //"outDir": "./build",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    //"rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true,
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  }
+}
